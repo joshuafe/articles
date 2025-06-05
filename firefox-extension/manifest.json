@@ -1,0 +1,21 @@
+{
+  "manifest_version": 2,
+  "name": "PDF Downloader",
+  "version": "1.0",
+  "description": "Downloads PDF using first author - last author - journal - year - title naming.",
+  "applications": {
+    "gecko": {
+      "id": "pdf-downloader@example.com"
+    }
+  },
+  "permissions": [
+    "downloads",
+    "activeTab"
+  ],
+  "browser_action": {
+    "default_title": "Download PDF"
+  },
+  "background": {
+    "scripts": ["background.js"]
+  }
+}
