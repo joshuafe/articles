@@ -14,6 +14,7 @@
 
 import Foundation
 import Observation
+import SwiftData
 
 /// One thing the user taught the app: they said `meant`, the ear heard `heard`.
 struct LexiconEntry: Identifiable, Equatable, Codable {
@@ -42,6 +43,18 @@ final class Lexicon {
 
     private(set) var entries: [LexiconEntry] = []
 
+    private var context: ModelContext?
+
+    /// Attach the shared SwiftData context and recall saved terms on launch.
+    func attach(_ context: ModelContext) {
+        self.context = context
+        let descriptor = FetchDescriptor<LexiconEntryRecord>(
+            sortBy: [SortDescriptor(\.addedAt, order: .reverse)])
+        if let records = try? context.fetch(descriptor) {
+            entries = records.map(LexiconEntry.init(record:))
+        }
+    }
+
     /// Record a correction. If the user has taught this term before, the new
     /// misheard form is folded into the existing entry rather than duplicated.
     func learn(meant: String, heard: String?, source: LexiconEntry.Source = .correction) {
@@ -64,6 +77,28 @@ final class Lexicon {
                 at: 0
             )
         }
+        persist()
+    }
+
+    /// Save the lexicon to SwiftData (reconcile + upsert). Cheap and infrequent —
+    /// only fires on a correction — so no debounce is needed.
+    private func persist() {
+        guard let context else { return }
+        let existing = (try? context.fetch(FetchDescriptor<LexiconEntryRecord>())) ?? []
+        var byID: [UUID: LexiconEntryRecord] = [:]
+        for record in existing { byID[record.id] = record }
+        let liveIDs = Set(entries.map(\.id))
+        for entry in entries {
+            if let record = byID[entry.id] {
+                record.update(from: entry)
+            } else {
+                context.insert(LexiconEntryRecord(entry))
+            }
+        }
+        for record in existing where !liveIDs.contains(record.id) {
+            context.delete(record)
+        }
+        try? context.save()
     }
 
     /// The brain's prompt budget is small, so we keep the injected list short
@@ -79,5 +114,47 @@ final class Lexicon {
         guard !terms.isEmpty else { return "" }
         return "The user often says these terms; prefer them when the transcript "
             + "is a near-match: " + terms.joined(separator: ", ") + "."
+    }
+}
+
+// MARK: SwiftData persistence
+
+/// Durable form of a LexiconEntry — same boundary pattern as CaptureRecord, and
+/// CloudKit-ready (all optional/defaulted, no unique constraints).
+@Model
+final class LexiconEntryRecord {
+    var id: UUID = UUID()
+    var meant: String = ""
+    var misheardForms: [String] = []
+    var sourceRaw: String = LexiconEntry.Source.correction.rawValue
+    var addedAt: Date = Date.now
+
+    init(id: UUID, meant: String, misheardForms: [String], sourceRaw: String, addedAt: Date) {
+        self.id = id
+        self.meant = meant
+        self.misheardForms = misheardForms
+        self.sourceRaw = sourceRaw
+        self.addedAt = addedAt
+    }
+}
+
+extension LexiconEntryRecord {
+    convenience init(_ e: LexiconEntry) {
+        self.init(id: e.id, meant: e.meant, misheardForms: e.misheardForms,
+                  sourceRaw: e.source.rawValue, addedAt: e.addedAt)
+    }
+
+    func update(from e: LexiconEntry) {
+        meant = e.meant
+        misheardForms = e.misheardForms
+        sourceRaw = e.source.rawValue
+        addedAt = e.addedAt
+    }
+}
+
+extension LexiconEntry {
+    init(record r: LexiconEntryRecord) {
+        self.init(id: r.id, meant: r.meant, misheardForms: r.misheardForms,
+                  source: Source(rawValue: r.sourceRaw) ?? .correction, addedAt: r.addedAt)
     }
 }

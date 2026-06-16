@@ -25,7 +25,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 @MainActor
 struct FrictionlessNotesApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @State private var store = CaptureStore()
+    @State private var store = CaptureStore.shared
 
     var body: some Scene {
         WindowGroup {

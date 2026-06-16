@@ -10,10 +10,15 @@
 import SwiftUI
 import AVFoundation
 import Observation
+import SwiftData
 
 @MainActor
 @Observable
 final class CaptureStore {
+
+    /// Shared instance so the CarPlay scene and the SwiftUI app drive the same
+    /// ledger and pipeline — a thought captured in the car lands in the app.
+    static let shared = CaptureStore()
 
     // MARK: Live capture state
     enum ListeningState: Equatable { case idle, live }
@@ -25,6 +30,8 @@ final class CaptureStore {
     var thinking = false
     var justFinalizedID: UUID?
     private var source: CaptureSource = .mock
+    /// While true, a CarPlay button capture owns the ears (see handleEars).
+    private var carPlayActive = false
 
     // MARK: Ears state
     var earsReady = false
@@ -59,6 +66,11 @@ final class CaptureStore {
     private var earsTask: Task<Void, Never>?
     private var reachabilityTask: Task<Void, Never>?
     private var transcriptTask: Task<Void, Never>?
+
+    // MARK: Persistence (local SwiftData — CloudKit-ready schema)
+    private let modelContainer: ModelContainer? = try? ModelContainer(
+        for: CaptureRecord.self, LexiconEntryRecord.self)
+    private var persistTask: Task<Void, Never>?
 
     init() {
         // Brain selection, in order of preference:
@@ -106,6 +118,7 @@ final class CaptureStore {
         #endif
         motion.onSignal = { [weak self] signal in self?.sendEndpoint(signal) }
         motion.isVadSilent = { [weak self] in self?.thinking ?? true }
+        loadPersisted()
     }
 
     private func subscribe() {
@@ -159,6 +172,17 @@ final class CaptureStore {
     }
 
     private func handleEars(_ event: EarsEvent) {
+        // While CarPlay drives a capture it owns the session — handle only status
+        // here so the home doesn't also endpoint and double-file the recording.
+        if carPlayActive {
+            switch event {
+            case .ready: earsReady = true; earsStatus = nil
+            case .modelStatus(let s): earsStatus = s
+            case .error(let s): earsStatus = s
+            default: break
+            }
+            return
+        }
         switch event {
         case .ready:
             earsReady = true
@@ -168,6 +192,7 @@ final class CaptureStore {
         case .error(let s):
             earsStatus = s
         case .voiceStarted:
+            print("[ears→store] voiceStarted (listening=\(listening), muted=\(earsMuted))")
             guard listening == .idle else { return }
             source = .mic
             enterLive()
@@ -182,6 +207,14 @@ final class CaptureStore {
             withAnimation(Motion.dimThinking) { thinking = true }
             motion.noteSilence(true)
         case .voiceResumed:
+            // "Resumed" while idle means the ears' utterance got stuck (e.g. a mock
+            // capture ended without finalizing them) — no fresh .voiceStarted would
+            // ever fire, so new recordings silently fail. Clear it so the next
+            // speech starts clean.
+            if listening == .idle {
+                print("[ears→store] voiceResumed while idle — clearing stuck ears state")
+                ears.reset()
+            }
             thinking = false
             motion.noteSilence(false)
         }
@@ -246,6 +279,7 @@ final class CaptureStore {
         draft = ""
 
         if endedSource == .mock {
+            ears.reset()   // a mock capture leaves the always-on ears' utterance dangling
             guard !mockText.isEmpty else { return }
             Haptics.recordStop()
             insertAndSubmit(Capture(kind: .audio, deviceTranscript: mockText))
@@ -272,6 +306,32 @@ final class CaptureStore {
         insertAndSubmit(Capture(kind: .text, deviceTranscript: trimmed))
     }
 
+    // MARK: CarPlay capture
+
+    /// True while the CarPlay scene is driving a button capture.
+    var isCarPlayCapturing: Bool { carPlayActive }
+
+    /// Start a button-driven capture from CarPlay. Reuses the phone's ears and
+    /// pipeline, so a thought spoken in the car lands in the same ledger.
+    func carPlayBeginCapture() async {
+        carPlayActive = true
+        earsMuted = false
+        ears.setMuted(false)
+        await startEars()        // no-op if the ears are already running
+    }
+
+    /// Finish the CarPlay capture: transcribe the utterance and submit it.
+    @discardableResult
+    func carPlayEndCapture() async -> Capture? {
+        carPlayActive = false
+        let text = (await ears.finalize()).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return nil }
+        Haptics.recordStop()
+        let capture = Capture(kind: .audio, deviceTranscript: text)
+        insertAndSubmit(capture)
+        return capture
+    }
+
     private func pushLevel(_ rms: Float) {
         levels.removeFirst()
         levels.append(rms)
@@ -283,6 +343,7 @@ final class CaptureStore {
         pipeline.submit(capture)
         refreshMacStatus()
         runFirstPass(on: capture)
+        schedulePersist()
     }
 
     /// Stage 1: paint an instant ANE category guess on the ledger tick, ahead of
@@ -341,6 +402,7 @@ final class CaptureStore {
             if let index = captures.firstIndex(where: { $0.id == id }) {
                 captures.remove(at: index)
                 captures.insert(contentsOf: children, at: index)
+                schedulePersist()
             }
         }
     }
@@ -348,6 +410,54 @@ final class CaptureStore {
     private func mutate(_ id: UUID, _ change: (inout Capture) -> Void) {
         guard let index = captures.firstIndex(where: { $0.id == id }) else { return }
         change(&captures[index])
+        schedulePersist()
+    }
+
+    // MARK: Persistence (local SwiftData)
+
+    /// Recall the ledger from disk on launch, then resume anything that was
+    /// mid-flight when the app last closed (the on-device brain doesn't auto-resume).
+    private func loadPersisted() {
+        guard let context = modelContainer?.mainContext else { return }
+        lexicon.attach(context)
+        let descriptor = FetchDescriptor<CaptureRecord>(
+            sortBy: [SortDescriptor(\.createdAt, order: .reverse)])
+        guard let records = try? context.fetch(descriptor) else { return }
+        captures = records.map(Capture.init(record:))
+        for capture in captures where capture.status != .done && capture.status != .needsReview {
+            pipeline.submit(capture)
+        }
+    }
+
+    /// Debounced save — coalesces the burst of events a single capture emits.
+    private func schedulePersist() {
+        persistTask?.cancel()
+        persistTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(400))
+            guard !Task.isCancelled, let self else { return }
+            self.persistNow()
+        }
+    }
+
+    /// Reconcile the in-memory ledger into SwiftData: upsert each capture, drop
+    /// records no longer present.
+    private func persistNow() {
+        guard let context = modelContainer?.mainContext else { return }
+        let existing = (try? context.fetch(FetchDescriptor<CaptureRecord>())) ?? []
+        var byID: [UUID: CaptureRecord] = [:]
+        for record in existing { byID[record.id] = record }
+        let liveIDs = Set(captures.map(\.id))
+        for capture in captures {
+            if let record = byID[capture.id] {
+                record.update(from: capture)
+            } else {
+                context.insert(CaptureRecord(capture))
+            }
+        }
+        for record in existing where !liveIDs.contains(record.id) {
+            context.delete(record)
+        }
+        try? context.save()
     }
 
     // MARK: Receipt actions (refile = learning signal)

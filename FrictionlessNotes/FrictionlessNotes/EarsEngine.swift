@@ -113,6 +113,19 @@ final class EarsEngine {
         isRunning = false
     }
 
+    /// Drop any in-flight utterance and return to a clean "waiting for voice"
+    /// state — without transcribing — so the next sustained speech reliably
+    /// fires a fresh `.voiceStarted`. Guards against a stuck `inUtterance` after
+    /// a capture that ended without finalizing the ears (e.g. a mock capture).
+    func reset() {
+        inUtterance = false
+        utterance = []
+        preBuffer = []
+        pendingVadSamples = []
+        speechStreak = 0
+        silentChunks = 0
+    }
+
     /// Ensure the Parakeet bundles are staged on disk (background download that
     /// survives suspension). Returns the repo folder for AsrModels.load(from:).
     private func ensureModelsStaged() async throws -> URL {

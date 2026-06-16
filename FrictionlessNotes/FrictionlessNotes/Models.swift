@@ -59,8 +59,8 @@ enum NoteCategory: String, Codable, CaseIterable {
 }
 
 /// One applied action from the Mac's enrich step — rendered as a filing receipt (M3).
-struct FilingAction: Identifiable, Equatable {
-    enum Tool: String {
+struct FilingAction: Identifiable, Equatable, Codable {
+    enum Tool: String, Codable {
         case fileCapture = "filed"
         case addListItem = "list"
         case createTodo = "todo"
