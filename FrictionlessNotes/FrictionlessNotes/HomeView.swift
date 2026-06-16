@@ -26,6 +26,11 @@ struct HomeView: View {
                     .padding(.top, Theme.s2)
                     .padding(.bottom, Theme.s4)
 
+                if store.hasListItems && !isLive {
+                    listsAffordance
+                        .padding(.bottom, Theme.s4)
+                }
+
                 if store.captures.isEmpty && !isLive {
                     firstRun
                 } else {
@@ -77,6 +82,9 @@ struct HomeView: View {
         .navigationDestination(for: UUID.self) { id in
             CaptureDetailView(captureID: id)
         }
+        .navigationDestination(for: LedgerRoute.self) { _ in
+            ListsView()
+        }
         .task { await store.startEars() }
         .onChange(of: scenePhase) { _, phase in
             switch phase {
@@ -117,6 +125,26 @@ struct HomeView: View {
         }
         .frame(maxWidth: .infinity)
         .contentShape(Rectangle())
+    }
+
+    /// Quiet tappable summary of open list items → pushes the Lists surface.
+    private var listsAffordance: some View {
+        NavigationLink(value: LedgerRoute.lists) {
+            HStack(spacing: Theme.s2) {
+                Text("\u{25B8}").micro(Theme.inkFaint)
+                Text(listsSummary).micro(Theme.lamplight.opacity(0.8))
+            }
+            .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var listsSummary: String {
+        var parts: [String] = []
+        if store.openTodoCount > 0 { parts.append("\(store.openTodoCount) to do") }
+        if store.openShoppingCount > 0 { parts.append("\(store.openShoppingCount) to buy") }
+        return parts.isEmpty ? "lists" : parts.joined(separator: " \u{00B7} ")
     }
 
     private var firstRun: some View {

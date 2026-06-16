@@ -43,6 +43,8 @@ final class CaptureStore {
 
     // MARK: Data
     var captures: [Capture] = []
+    /// Filed, checkable items (todos + shopping) — the actionable output of filing.
+    var listItems: [ListItem] = []
     var macStatus: MacStatus = .online(lastActiveMinutes: 0)
     var showComposer = false
     var showDebugBar = true
@@ -69,7 +71,7 @@ final class CaptureStore {
 
     // MARK: Persistence (local SwiftData — CloudKit-ready schema)
     private let modelContainer: ModelContainer? = try? ModelContainer(
-        for: CaptureRecord.self, LexiconEntryRecord.self)
+        for: CaptureRecord.self, LexiconEntryRecord.self, ListItemRecord.self)
     private var persistTask: Task<Void, Never>?
 
     init() {
@@ -387,6 +389,19 @@ final class CaptureStore {
                 c.actions.append(contentsOf: actions)
                 c.status = .done
             }
+            // Filing now produces real, checkable items (with provenance), not
+            // just a cosmetic receipt.
+            for action in actions where action.tool == .createTodo || action.tool == .addListItem {
+                listItems.insert(
+                    ListItem(text: action.text,
+                             category: action.category ?? category,
+                             group: action.listName,
+                             due: action.due,
+                             sourceCaptureID: id,
+                             sourceActionID: action.id),
+                    at: 0)
+            }
+            schedulePersist()
             Haptics.filed()
 
         case .needsReview(let id, let guess, let reason):
@@ -420,12 +435,16 @@ final class CaptureStore {
     private func loadPersisted() {
         guard let context = modelContainer?.mainContext else { return }
         lexicon.attach(context)
-        let descriptor = FetchDescriptor<CaptureRecord>(
-            sortBy: [SortDescriptor(\.createdAt, order: .reverse)])
-        guard let records = try? context.fetch(descriptor) else { return }
-        captures = records.map(Capture.init(record:))
-        for capture in captures where capture.status != .done && capture.status != .needsReview {
-            pipeline.submit(capture)
+        if let records = try? context.fetch(FetchDescriptor<CaptureRecord>(
+            sortBy: [SortDescriptor(\.createdAt, order: .reverse)])) {
+            captures = records.map(Capture.init(record:))
+            for capture in captures where capture.status != .done && capture.status != .needsReview {
+                pipeline.submit(capture)
+            }
+        }
+        if let itemRecords = try? context.fetch(FetchDescriptor<ListItemRecord>(
+            sortBy: [SortDescriptor(\.createdAt, order: .reverse)])) {
+            listItems = itemRecords.map(ListItem.init(record:))
         }
     }
 
@@ -457,6 +476,22 @@ final class CaptureStore {
         for record in existing where !liveIDs.contains(record.id) {
             context.delete(record)
         }
+
+        // List items
+        let existingItems = (try? context.fetch(FetchDescriptor<ListItemRecord>())) ?? []
+        var itemsByID: [UUID: ListItemRecord] = [:]
+        for record in existingItems { itemsByID[record.id] = record }
+        let liveItemIDs = Set(listItems.map(\.id))
+        for item in listItems {
+            if let record = itemsByID[item.id] {
+                record.update(from: item)
+            } else {
+                context.insert(ListItemRecord(item))
+            }
+        }
+        for record in existingItems where !liveItemIDs.contains(record.id) {
+            context.delete(record)
+        }
         try? context.save()
     }
 
@@ -468,7 +503,10 @@ final class CaptureStore {
                 c.actions[i].undone = true
             }
         }
+        // Undo unfiles for real — drop the item(s) this action created.
+        listItems.removeAll { $0.sourceActionID == actionID }
         pipeline.refile(captureID: captureID, actionID: actionID, to: nil)
+        schedulePersist()
     }
 
     func move(captureID: UUID, actionID: UUID, to category: NoteCategory) {
@@ -479,8 +517,34 @@ final class CaptureStore {
                 c.actions[i].listName = category.rawValue
             }
         }
+        if category == .todo || category == .shopping {
+            for i in listItems.indices where listItems[i].sourceActionID == actionID {
+                listItems[i].category = category
+            }
+        } else {
+            // Moved out of a list category — it's a plain note now, not a list item.
+            listItems.removeAll { $0.sourceActionID == actionID }
+        }
         pipeline.refile(captureID: captureID, actionID: actionID, to: category)
+        schedulePersist()
     }
+
+    // MARK: Lists
+
+    /// Check off / uncheck a list item. `done` is sticky and persisted.
+    func toggleDone(itemID: UUID) {
+        guard let i = listItems.firstIndex(where: { $0.id == itemID }) else { return }
+        listItems[i].done.toggle()
+        listItems[i].doneAt = listItems[i].done ? .now : nil
+        Haptics.checkOff()
+        schedulePersist()
+    }
+
+    var todoItems: [ListItem] { listItems.filter { $0.category == .todo } }
+    var shoppingItems: [ListItem] { listItems.filter { $0.category == .shopping } }
+    var hasListItems: Bool { !listItems.isEmpty }
+    var openTodoCount: Int { todoItems.filter { !$0.done }.count }
+    var openShoppingCount: Int { shoppingItems.filter { !$0.done }.count }
 
     // MARK: Tap-to-correct (DESIGN.md §personal lexicon)
 
