@@ -64,9 +64,12 @@ private struct GemmaFilingDecision: Codable {
     var due: String?
     var confident: Bool
     var distinctThoughts: [String]?
+    /// "question" when the speaker is asking something to be answered from their
+    /// own notes; otherwise "capture" (default). Drives the Ask routing.
+    var intent: String?
 
     private enum CodingKeys: String, CodingKey {
-        case polishedTranscript, summary, category, items, due, confident, distinctThoughts
+        case polishedTranscript, summary, category, items, due, confident, distinctThoughts, intent
     }
 
     init(from decoder: Decoder) throws {
@@ -78,6 +81,7 @@ private struct GemmaFilingDecision: Codable {
         due = (try? c.decodeIfPresent(String.self, forKey: .due)) ?? nil
         confident = (try? c.decode(Bool.self, forKey: .confident)) ?? false
         distinctThoughts = (try? c.decodeIfPresent([String].self, forKey: .distinctThoughts)) ?? nil
+        intent = (try? c.decodeIfPresent(String.self, forKey: .intent)) ?? nil
     }
 }
 
@@ -167,6 +171,12 @@ final class GemmaPipeline: PipelineClient {
         each subject's full text as a separate string and leave everything else \
         minimal.
 
+        intent: set "question" ONLY when the speaker is ASKING something to be \
+        answered from their own past notes ("what did I decide about the permit", \
+        "when is my dentist appointment"). A reminder to DO something ("ask Dana \
+        about the permit", "remind me to call the vet") is NOT a question — it's a \
+        capture/todo. Default "capture".
+
         Respond with ONLY a JSON object — no markdown fences, no prose — exactly:
         {
           "polishedTranscript": "string",
@@ -175,7 +185,8 @@ final class GemmaPipeline: PipelineClient {
           "items": [ { "text": "string", "due": "fri or null", "group": "label" } ],
           "due": "overall due hint or null",
           "confident": true,
-          "distinctThoughts": []
+          "distinctThoughts": [],
+          "intent": "capture"
         }
 
         Example — input "I need to call dana about the permit before friday, then \
@@ -260,6 +271,20 @@ final class GemmaPipeline: PipelineClient {
 
     func refile(captureID: UUID, actionID: UUID, to category: NoteCategory?) {
         refileLog.append((captureID, actionID, category))
+    }
+
+    func answer(query: String, context: String) async -> String {
+        let instructions = """
+            Answer the user's question using ONLY the notes provided. If the notes \
+            don't contain the answer, say so plainly — never guess. Be concise: one \
+            or two sentences, calm and plain.
+            """
+        let message = context.isEmpty
+            ? "I have no notes yet.\n\nQuestion: \u{201C}\(query)\u{201D}"
+            : "Notes:\n\(context)\n\nQuestion: \u{201C}\(query)\u{201D}"
+        let raw = ((try? await engine.generate(instructions: instructions, userMessage: message)) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return raw.isEmpty ? "I couldn\u{2019}t find that in your notes." : raw
     }
 
     private func drain() {
@@ -413,6 +438,12 @@ final class GemmaPipeline: PipelineClient {
     }
 
     private func apply(_ decision: GemmaFilingDecision, to capture: Capture) {
+        // A question → hand off to the Ask path instead of filing.
+        if decision.intent == "question" {
+            let q = decision.polishedTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+            cont.yield(.isQuestion(capture.id, query: q.isEmpty ? capture.deviceTranscript : q))
+            return
+        }
         // Multi-thought recording → split into children, file each.
         if let thoughts = decision.distinctThoughts, thoughts.count > 1 {
             let children = thoughts.map {

@@ -34,6 +34,10 @@ final class CaptureRecord {
     /// `[FilingAction]` encoded as JSON — small, and avoids a child-entity
     /// relationship for v1 (the design's ActionLog can split it out later).
     var actionsData: Data?
+    var isQuestion: Bool = false
+    var answer: String?
+    var answerArrivedAt: Date?
+    var citationsData: Data?            // [UUID] of cited captures, JSON
 
     init(id: UUID, createdAt: Date, kindRaw: String, deviceTranscript: String) {
         self.id = id
@@ -64,6 +68,10 @@ extension CaptureRecord {
         reviewReason = c.reviewReason
         polishArrivedAt = c.polishArrivedAt
         actionsData = try? JSONEncoder().encode(c.actions)
+        isQuestion = c.isQuestion
+        answer = c.answer
+        answerArrivedAt = c.answerArrivedAt
+        citationsData = try? JSONEncoder().encode(c.citedCaptureIDs)
     }
 }
 
@@ -83,5 +91,9 @@ extension Capture {
         reviewReason = r.reviewReason
         polishArrivedAt = r.polishArrivedAt
         actions = r.actionsData.flatMap { try? JSONDecoder().decode([FilingAction].self, from: $0) } ?? []
+        isQuestion = r.isQuestion
+        answer = r.answer
+        answerArrivedAt = r.answerArrivedAt
+        citedCaptureIDs = r.citationsData.flatMap { try? JSONDecoder().decode([UUID].self, from: $0) } ?? []
     }
 }

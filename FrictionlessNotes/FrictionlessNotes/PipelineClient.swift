@@ -12,6 +12,8 @@ import Foundation
 protocol PipelineClient: AnyObject {
     var events: AsyncStream<PipelineEvent> { get }
     func submit(_ capture: Capture)
+    /// Recognized as a question → answer it from the user's notes. Returns prose.
+    func answer(query: String, context: String) async -> String
     /// Receipt Undo / Move-to — logged as a refile learning signal.
     func refile(captureID: UUID, actionID: UUID, to: NoteCategory?)
     var offline: Bool { get set }
@@ -59,6 +61,13 @@ final class MockPipeline: PipelineClient {
         refileLog.append((captureID, actionID, category))
     }
 
+    func answer(query: String, context: String) async -> String {
+        try? await Task.sleep(for: .seconds(1))
+        guard !context.isEmpty else { return "I don\u{2019}t have any notes about that yet." }
+        let first = context.split(separator: "\n").first.map(String.init) ?? ""
+        return "From your notes: " + first.drop(while: { $0 == "-" || $0 == " " })
+    }
+
     private func drainHeldQueue() {
         let queue = held
         held.removeAll()
@@ -70,6 +79,7 @@ final class MockPipeline: PipelineClient {
         let isReviewCase = submissionCount % 5 == 0
         let isSplitCase = capture.deviceTranscript.contains("never had to turn on")
             && capture.deviceTranscript.contains("permit")
+        let isQuestionCase = QuestionHeuristic.looksLikeQuestion(capture.deviceTranscript)
 
         Task { [weak self] in
             guard let self else { return }
@@ -77,6 +87,12 @@ final class MockPipeline: PipelineClient {
             self.cont.yield(.statusChanged(capture.id, .uploaded))
             try? await Task.sleep(for: .seconds(1))
             self.cont.yield(.statusChanged(capture.id, .processing))
+
+            if isQuestionCase {
+                try? await Task.sleep(for: .seconds(1))
+                self.cont.yield(.isQuestion(capture.id, query: capture.deviceTranscript))
+                return
+            }
 
             if isSplitCase {
                 try? await Task.sleep(for: .seconds(2))

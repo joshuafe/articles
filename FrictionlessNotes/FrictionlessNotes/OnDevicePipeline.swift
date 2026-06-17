@@ -99,6 +99,17 @@ final class OnDevicePipeline: PipelineClient {
         refileLog.append((captureID, actionID, category))
     }
 
+    func answer(query: String, context: String) async -> String {
+        let prompt = context.isEmpty
+            ? "I have no notes yet. Briefly say you can't answer that. Question: \(query)"
+            : "Answer using ONLY these notes; say so if they don't cover it. Be concise.\nNotes:\n\(context)\n\nQuestion: \(query)"
+        do {
+            return try await session.respond(to: prompt).content
+        } catch {
+            return "I couldn\u{2019}t answer that."
+        }
+    }
+
     private func drainHeld() {
         let queue = held
         held.removeAll()
@@ -107,6 +118,10 @@ final class OnDevicePipeline: PipelineClient {
 
     private func process(_ capture: Capture) {
         cont.yield(.statusChanged(capture.id, .processing))
+        if QuestionHeuristic.looksLikeQuestion(capture.deviceTranscript) {
+            cont.yield(.isQuestion(capture.id, query: capture.deviceTranscript))
+            return
+        }
         Task { [weak self] in
             guard let self else { return }
             do {

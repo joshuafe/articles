@@ -419,6 +419,25 @@ final class CaptureStore {
                 captures.insert(contentsOf: children, at: index)
                 schedulePersist()
             }
+
+        case .isQuestion(let id, let query):
+            // Recognized as a question — answer it from existing notes, don't file.
+            let result = retrieve(for: query)
+            mutate(id) { c in
+                c.isQuestion = true
+                c.finalTranscript = query
+                c.status = .processing
+                c.citedCaptureIDs = result.citations
+            }
+            Task { [weak self] in
+                guard let self else { return }
+                let answer = await self.pipeline.answer(query: query, context: result.context)
+                self.mutate(id) { c in
+                    c.answer = answer
+                    c.answerArrivedAt = .now
+                    c.status = .done
+                }
+            }
         }
     }
 
@@ -545,6 +564,42 @@ final class CaptureStore {
     var hasListItems: Bool { !listItems.isEmpty }
     var openTodoCount: Int { todoItems.filter { !$0.done }.count }
     var openShoppingCount: Int { shoppingItems.filter { !$0.done }.count }
+
+    // MARK: Ask (query → answer over the user's notes)
+
+    private static let stopwords: Set<String> = [
+        "the","and","what","when","where","did","does","was","were","are","for",
+        "you","your","with","that","this","about","have","had","has","into","from",
+        "they","them","whats","wheres","whens","remind"]
+
+    /// Keyword retrieval over captures + list items. Returns a context block for
+    /// the brain to answer from, and the captures it drew on (for citations).
+    private func retrieve(for query: String, limit: Int = 6) -> (context: String, citations: [UUID]) {
+        let terms = Set(query.lowercased()
+            .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+            .map(String.init)
+            .filter { $0.count > 2 && !Self.stopwords.contains($0) })
+        guard !terms.isEmpty else { return ("", []) }
+
+        var scored: [(line: String, capture: UUID?, score: Int)] = []
+        for c in captures where !c.isQuestion {
+            let hay = (c.bestTranscript + " " + (c.summary ?? "")).lowercased()
+            let score = terms.filter { hay.contains($0) }.count
+            if score > 0 { scored.append((c.ledgerLine, c.id, score)) }
+        }
+        for item in listItems {
+            let hay = item.text.lowercased()
+            let score = terms.filter { hay.contains($0) }.count
+            if score > 0 {
+                scored.append(("\(item.category.rawValue): \(item.text)\(item.done ? " (done)" : "")",
+                               item.sourceCaptureID, score))
+            }
+        }
+        let top = scored.sorted { $0.score > $1.score }.prefix(limit)
+        let context = top.map { "- \($0.line)" }.joined(separator: "\n")
+        let citations = Array(Set(top.compactMap { $0.capture }))
+        return (context, citations)
+    }
 
     // MARK: Tap-to-correct (DESIGN.md §personal lexicon)
 

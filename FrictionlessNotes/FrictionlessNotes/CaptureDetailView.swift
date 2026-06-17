@@ -32,7 +32,11 @@ struct CaptureDetailView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: Theme.s5) {
                         hero(capture)
-                        LifecycleChip(status: capture.status)
+                        if capture.isQuestion {
+                            askCard(capture)
+                        } else {
+                            LifecycleChip(status: capture.status)
+                        }
 
                         if capture.status == .needsReview {
                             reviewCard(capture)
@@ -92,6 +96,44 @@ struct CaptureDetailView: View {
                 correctionTarget = WordTarget(index: index, word: word)
             }
         }
+    }
+
+    /// Ask: the answer to a question, drawn from the user's notes, with citations.
+    @ViewBuilder
+    private func askCard(_ capture: Capture) -> some View {
+        VStack(alignment: .leading, spacing: Theme.s3) {
+            if let answer = capture.answer {
+                Text(answer)
+                    .font(Typography.caption)
+                    .foregroundStyle(Theme.ink)
+                let cited = capture.citedCaptureIDs.compactMap { id in
+                    store.captures.first { $0.id == id }
+                }
+                if !cited.isEmpty {
+                    VStack(alignment: .leading, spacing: Theme.s2) {
+                        Text("sources").micro(Theme.inkFaint)
+                        ForEach(cited.prefix(3)) { src in
+                            NavigationLink(value: src.id) {
+                                HStack(spacing: Theme.s2) {
+                                    Circle().fill((src.category ?? .note).tint).frame(width: 4, height: 4)
+                                    Text(src.ledgerLine).micro(Theme.inkDim).lineLimit(1)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            } else {
+                HStack(spacing: Theme.s2) {
+                    BreathingDot(color: Theme.statusProcessing)
+                    Text("thinking\u{2026}").micro(Theme.inkDim)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(Theme.s4)
+        .background(Theme.stage1, in: RoundedRectangle(cornerRadius: Theme.rCard))
+        .overlay(RoundedRectangle(cornerRadius: Theme.rCard).strokeBorder(Theme.hairline, lineWidth: 0.5))
     }
 
     private func reviewCard(_ capture: Capture) -> some View {

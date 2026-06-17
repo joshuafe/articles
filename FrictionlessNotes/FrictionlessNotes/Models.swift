@@ -106,6 +106,12 @@ struct Capture: Identifiable, Equatable {
     var reviewGuess: NoteCategory?
     var reviewReason: String?
     var polishArrivedAt: Date?          // recent → sweep plays
+    // Ask: a capture the brain read as a question — answered from existing notes
+    // instead of filed.
+    var isQuestion: Bool = false
+    var answer: String?
+    var citedCaptureIDs: [UUID] = []
+    var answerArrivedAt: Date?
 
     var bestTranscript: String { finalTranscript ?? deviceTranscript }
     var ledgerLine: String { summary ?? bestTranscript }
@@ -134,6 +140,22 @@ enum PipelineEvent: Sendable {
     case needsReview(UUID, guess: NoteCategory, reason: String)
     /// One recording contained multiple thoughts — replace it with children.
     case split(UUID, into: [Capture])
+    /// The brain read this capture as a question — answer it from existing notes.
+    case isQuestion(UUID, query: String)
+}
+
+/// Lightweight question detection for pipelines without an LLM intent signal
+/// (mock, Apple Foundation Models). Gemma uses its own decision field.
+enum QuestionHeuristic {
+    static func looksLikeQuestion(_ text: String) -> Bool {
+        let t = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return false }
+        if t.hasSuffix("?") { return true }
+        let starters = ["what", "whats", "what's", "when", "where", "who", "why",
+                        "how", "which", "did i", "do i", "is there", "are there",
+                        "remind me what", "remind me when", "what did i", "where did i"]
+        return starters.contains { t == $0 || t.hasPrefix($0 + " ") }
+    }
 }
 
 /// Endpointing — stop is a physical signal, not a silence guess.
