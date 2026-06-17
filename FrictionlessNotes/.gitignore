@@ -1,0 +1,17 @@
+# macOS
+.DS_Store
+
+# Xcode build artifacts & per-user state
+build/
+DerivedData/
+*.xcuserstate
+**/xcuserdata/
+
+# On-device Gemma weights — large (~736MB), loaded/downloaded separately
+GemmaModel/
+
+# Regenerable Create ML training output (deployed copy lives in FrictionlessNotes/)
+tools/*.mlmodel
+
+# Local Claude Code project config
+.claude/
