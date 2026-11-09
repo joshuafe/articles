@@ -123,3 +123,18 @@ changes from the file-only app.
 The scheduled function that calls Claude Opus 5.5 (`claude-opus-5-5`) for decompositions, estimates and the
 brief (§6.3) slots in next to `replan`: same `loadState`, output applied with `apply_changes` as proposals.
 Not built yet.
+
+## Live deployment (2026-11-09)
+
+The hub runs in Supabase project `frictionless-pm`, ref `zxslnlhnfsaglobsfodn` (us-east-1, Free plan, its own
+project). Applied there: the three migrations above plus `fix_apply_changes_state_cast`, which carried the
+enum-cast fix now folded into `20261108000002_functions.sql`; a fresh install needs only the three files.
+The four functions are deployed with JWT verification off from the minified bundles `deno task bundle` writes.
+Tokens and the feed/MCP URLs live only in `~/Library/Application Support/FrictionlessNotes/hub-tokens.txt`
+(the Mac's device token is in `hub.json` beside it); nothing secret is in this repo.
+
+Verified on deploy: the feed returns `text/calendar` with one all-day VEVENT per open dated target and per
+milestone step; the MCP endpoint answers `initialize`, `tools/call now|list_plan|capture`, and
+`resources/read frictionless://now`; an untrusted `add_target` lands as a proposal; `trigger_replan()` from
+Postgres reaches `replan` with the Vault token (HTTP 200); the Mac app seeded the empty hub from its
+`ledger.json` and picked up a hub-side capture on its next 60-second refresh.

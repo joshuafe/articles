@@ -165,7 +165,7 @@ begin
             r_task.done_at, coalesce(r_task.created_at, now()), r_task.source_capture_id, r_task.source_action_id,
             r_task.project_id, r_task.target_id, coalesce(r_task.path_order, 0), r_task.effort_minutes, coalesce(r_task.lead_days, 0),
             coalesce(r_task.milestone, false), coalesce(r_task.needs_you, false), r_task.waiting_on,
-            r_task.due_date, r_task.due_kind, coalesce(r_task.state, case when coalesce(r_task.done, false) then 'done' else 'todo' end),
+            r_task.due_date, r_task.due_kind, coalesce(r_task.state, (case when coalesce(r_task.done, false) then 'done' else 'todo' end)::task_state),
             r_task.planned_by, r_task.actual_minutes)
     on conflict (id) do update set text = excluded.text, category = excluded.category, group_label = excluded.group_label,
       due_hint = excluded.due_hint, done = excluded.done, done_at = excluded.done_at, source_capture_id = excluded.source_capture_id,

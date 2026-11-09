@@ -2,7 +2,7 @@
 -- and the edge functions are deployed. Replace <ref> with the project ref.
 --
 -- 1. Where the functions live (pg_cron reads this to call `replan`).
-update settings set hub_url = 'https://<ref>.supabase.co' where id = 1;
+update settings set hub_url = 'https://zxslnlhnfsaglobsfodn.supabase.co' where id = 1;
 
 -- 2. The cron token: a trusted device token the scheduled job presents to `replan`.
 --    Stored in Vault; never shown again.
