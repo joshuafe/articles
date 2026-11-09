@@ -15,3 +15,7 @@ tools/*.mlmodel
 
 # Local Claude Code project config
 .claude/
+
+# SwiftPM build output (PlanCore, FrictionlessMac)
+.build/
+.swiftpm/

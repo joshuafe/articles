@@ -86,6 +86,7 @@ final class MotionEndpointer {
     private func fire(_ signal: EndpointSignal) {
         guard !stopped else { return }
         stopped = true
+        print("[motion] capture stop: \(signal)")
         onSignal?(signal)
     }
 
@@ -93,6 +94,17 @@ final class MotionEndpointer {
         guard !stopped else { return }
         let g = dm.gravity
         let now = Date.now
+
+        // A stop is a physical signal the speaker makes AFTER pausing — never
+        // mid-sentence. Gate motion disposal on VAD-silence: holding the phone up
+        // to read (portrait reads as "steep") must not cut a recording into
+        // pieces. While the user is still speaking, keep the timers reset so a
+        // disposal only counts once they've genuinely paused.
+        guard isVadSilent() else {
+            faceDownSince = nil
+            loweredStillSince = nil
+            return
+        }
 
         // Face-down: screen pointing at the ground.
         if g.z > faceDownThreshold {
