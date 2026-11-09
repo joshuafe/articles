@@ -104,6 +104,9 @@ struct ProgramWindow: View {
         }
         .sheet(isPresented: $showAdd) { AddTargetSheet() }
         .onReceive(Timer.publish(every: 300, on: .main, in: .common).autoconnect()) { _ in store.replan() }
+        .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { _ in
+            if store.hubConfigured { Task { await store.hubRefresh() } }
+        }
     }
 
     @ViewBuilder
@@ -121,7 +124,9 @@ struct ProgramWindow: View {
 
     private var subtitle: String {
         let saved = store.lastSaved.map { "saved \($0.formatted(date: .omitted, time: .shortened))" } ?? "ledger \(store.url.lastPathComponent)"
-        return "plan \(store.assessment.computedAt.formatted(date: .omitted, time: .shortened)) · \(saved)"
+        var s = "plan \(store.assessment.computedAt.formatted(date: .omitted, time: .shortened)) · \(saved)"
+        if let hub = store.hubStatus { s += " · \(hub)" }
+        return s
     }
 }
 

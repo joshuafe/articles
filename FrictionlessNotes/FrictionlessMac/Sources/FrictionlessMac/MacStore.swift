@@ -2,10 +2,12 @@
 //  MacStore.swift
 //  FrictionlessMac
 //
-//  The Mac's ledger: a JSON file in Application Support (until the hub lands),
-//  re-planned by the shared engine on every change, re-read when something
-//  else writes the file. The same verbs the phone has, so the two surfaces
-//  stay interchangeable.
+//  The Mac's ledger: a JSON file in Application Support, re-planned by the
+//  shared engine on every change, re-read when something else writes the file,
+//  and — when hub.json is present — kept in step with the frictionless-pm hub
+//  (pull on launch and every minute, push the changed rows after every commit;
+//  the file is the offline cache). The same verbs the phone has, so the two
+//  surfaces stay interchangeable.
 //
 
 import Foundation
@@ -23,8 +25,20 @@ final class MacStore {
     let url: URL
     private var watcher: DispatchSourceFileSystemObject?
 
-    init(url: URL = LedgerFile.defaultURL()) {
+    // Hub sync (HubClient.swift). nil when no hub.json is configured.
+    let hub: HubClient?
+    /// The ledger as the hub last confirmed it; the next push is the diff against this.
+    private var hubBaseline: Ledger?
+    private var hubVersion: Int = 0
+    private var hubBusy = false
+    var hubStatus: String?
+    var hubLastSync: Date?
+    var hubConfigured: Bool { hub != nil }
+    var hubPendingChanges: Int { hubBaseline.map { HubChanges.diff(from: $0, to: ledger).count } ?? 0 }
+
+    init(url: URL = LedgerFile.defaultURL(), hubConfig: HubConfig? = HubConfig.load()) {
         self.url = url
+        self.hub = hubConfig.map { HubClient(config: $0) }
         if let loaded = LedgerFile.load(from: url) {
             ledger = loaded
         } else {
@@ -33,6 +47,10 @@ final class MacStore {
         ensureAreas()
         replan()
         watch()
+        if hub != nil {
+            hubStatus = "hub: connecting…"
+            Task { await hubInitialSync() }
+        }
     }
 
     /// Older ledgers have no areas: give them the defaults and file the known
@@ -70,7 +88,7 @@ final class MacStore {
         }
     }
 
-    /// Every mutation ends here: re-plan, then write the file whole.
+    /// Every mutation ends here: re-plan, write the file whole, then push the diff to the hub.
     func commit() {
         replan()
         do {
@@ -78,6 +96,79 @@ final class MacStore {
             lastSaved = .now
         } catch {
             loadError = "couldn't save: \(error.localizedDescription)"
+        }
+        if hub != nil { Task { await hubPush() } }
+    }
+
+    // MARK: Hub sync
+
+    /// First contact: adopt the hub's ledger, or seed an empty hub from this Mac.
+    private func hubInitialSync() async {
+        guard let hub else { return }
+        do {
+            let snapshot = try await hub.pull()
+            let localHasContent = !(ledger.projects.isEmpty && ledger.targets.isEmpty && ledger.tasks.isEmpty)
+            if snapshot.isEmpty && localHasContent {
+                hubBaseline = .empty
+                hubVersion = snapshot.version
+                hubStatus = "hub: seeding from this Mac…"
+                await hubPush()
+            } else {
+                adopt(snapshot)
+            }
+        } catch {
+            hubStatus = "hub offline · \(error.localizedDescription)"
+        }
+    }
+
+    /// Take the hub's ledger as truth (it is the one the phone and the assistants write to).
+    private func adopt(_ snapshot: WireSnapshot) {
+        let remote = snapshot.ledger
+        hubVersion = snapshot.version
+        hubBaseline = remote
+        if HubChanges.diff(from: ledger, to: remote).isEmpty == false {
+            ledger = remote
+            if ledger.areas.isEmpty { ensureAreas() }
+            replan()
+            try? LedgerFile.save(ledger, to: url)
+        }
+        hubLastSync = .now
+        hubStatus = "hub synced \(Date.now.formatted(date: .omitted, time: .shortened))"
+    }
+
+    /// Push whatever differs from the hub's last confirmed state.
+    func hubPush() async {
+        guard let hub, let base = hubBaseline, !hubBusy else { return }
+        let snapshot = ledger
+        let changes = HubChanges.diff(from: base, to: snapshot)
+        guard !changes.isEmpty else { return }
+        hubBusy = true
+        defer { hubBusy = false }
+        do {
+            let result = try await hub.push(changes)
+            hubBaseline = snapshot
+            hubVersion = result.version
+            hubLastSync = .now
+            hubStatus = "hub synced \(Date.now.formatted(date: .omitted, time: .shortened))"
+        } catch {
+            hubStatus = "hub: \(changes.count) change\(changes.count == 1 ? "" : "s") pending · \(error.localizedDescription)"
+        }
+    }
+
+    /// The timer tick: push anything pending, then pull if the hub moved on.
+    func hubRefresh() async {
+        guard let hub, !hubBusy else { return }
+        if hubBaseline == nil { await hubInitialSync(); return }
+        await hubPush()
+        if hubPendingChanges > 0 { return }      // a failed push: don't overwrite local work with remote
+        hubBusy = true
+        defer { hubBusy = false }
+        do {
+            let snapshot = try await hub.pull()
+            if snapshot.version != hubVersion { adopt(snapshot) }
+            else { hubLastSync = .now; hubStatus = "hub synced \(Date.now.formatted(date: .omitted, time: .shortened))" }
+        } catch {
+            hubStatus = "hub offline · \(error.localizedDescription)"
         }
     }
 
