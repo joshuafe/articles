@@ -44,7 +44,18 @@ final class CaptureStore {
     // MARK: Data
     var captures: [Capture] = []
     /// Filed, checkable items (todos + shopping) — the actionable output of filing.
+    /// In v4 a list item is also a task on a target's path (DESIGN-PM.md §5).
     var listItems: [ListItem] = []
+    // Project-manager layer (DESIGN-PM.md). Methods live in CaptureStore+Plan.swift.
+    var projects: [Project] = []
+    var targets: [Target] = []
+    var decisions: [Decision] = []
+    var ideas: [Idea] = []
+    var capacity: CapacityModel = .interim {
+        didSet { saveCapacity(); schedulePersist() }
+    }
+    /// Tier-0 output, recomputed on every change (§6.1). Never persisted — derived.
+    var assessment: PlanAssessment = .empty
     var macStatus: MacStatus = .online(lastActiveMinutes: 0)
     var showComposer = false
     var showDebugBar = true
@@ -70,8 +81,9 @@ final class CaptureStore {
     private var transcriptTask: Task<Void, Never>?
 
     // MARK: Persistence (local SwiftData — CloudKit-ready schema)
-    private let modelContainer: ModelContainer? = try? ModelContainer(
-        for: CaptureRecord.self, LexiconEntryRecord.self, ListItemRecord.self)
+    let modelContainer: ModelContainer? = try? ModelContainer(
+        for: CaptureRecord.self, LexiconEntryRecord.self, ListItemRecord.self,
+        ProjectRecord.self, TargetRecord.self, DecisionRecord.self, IdeaRecord.self)
     private var persistTask: Task<Void, Never>?
 
     init() {
@@ -120,7 +132,9 @@ final class CaptureStore {
         #endif
         motion.onSignal = { [weak self] signal in self?.sendEndpoint(signal) }
         motion.isVadSilent = { [weak self] in self?.thinking ?? true }
+        loadCapacity()
         loadPersisted()
+        replan()
     }
 
     private func subscribe() {
@@ -390,16 +404,30 @@ final class CaptureStore {
                 c.status = .done
             }
             // Filing now produces real, checkable items (with provenance), not
-            // just a cosmetic receipt.
+            // just a cosmetic receipt. A todo that came with a typed deadline also
+            // becomes a target with a one-step path (DESIGN-PM.md §6.2), so it
+            // lands on the Now strip at once; the planner decomposes it later.
             for action in actions where action.tool == .createTodo || action.tool == .addListItem {
-                listItems.insert(
-                    ListItem(text: action.text,
-                             category: action.category ?? category,
-                             group: action.listName,
-                             due: action.due,
-                             sourceCaptureID: id,
-                             sourceActionID: action.id),
-                    at: 0)
+                var projectID: UUID? = nil
+                if let name = action.project { projectID = self.projectID(named: name) }
+                var item = ListItem(text: action.text,
+                                    category: action.category ?? category,
+                                    group: action.listName,
+                                    due: action.due,
+                                    sourceCaptureID: id,
+                                    sourceActionID: action.id,
+                                    projectID: projectID,
+                                    effortMinutes: action.effortMinutes,
+                                    waitingOn: action.waitingOn)
+                if action.tool == .createTodo, let dueDate = action.dueDate {
+                    let kind = action.dueKind ?? .goal
+                    let target = Target(projectID: projectID, title: action.text, due: dueDate,
+                                        kind: kind, sourceCaptureID: id)
+                    targets.insert(target, at: 0)
+                    item.targetID = target.id
+                    item.pathOrder = 0
+                }
+                listItems.insert(item, at: 0)
             }
             schedulePersist()
             Haptics.filed()
@@ -465,10 +493,25 @@ final class CaptureStore {
             sortBy: [SortDescriptor(\.createdAt, order: .reverse)])) {
             listItems = itemRecords.map(ListItem.init(record:))
         }
+        if let r = try? context.fetch(FetchDescriptor<ProjectRecord>(sortBy: [SortDescriptor(\.createdAt)])) {
+            projects = r.map(Project.init(record:))
+        }
+        if let r = try? context.fetch(FetchDescriptor<TargetRecord>(sortBy: [SortDescriptor(\.createdAt, order: .reverse)])) {
+            targets = r.map(Target.init(record:))
+        }
+        if let r = try? context.fetch(FetchDescriptor<DecisionRecord>(sortBy: [SortDescriptor(\.askedAt, order: .reverse)])) {
+            decisions = r.map(Decision.init(record:))
+        }
+        if let r = try? context.fetch(FetchDescriptor<IdeaRecord>(sortBy: [SortDescriptor(\.createdAt, order: .reverse)])) {
+            ideas = r.map(Idea.init(record:))
+        }
     }
 
     /// Debounced save — coalesces the burst of events a single capture emits.
-    private func schedulePersist() {
+    /// Also the one place the plan is recomputed: anything that changes the
+    /// ledger ends up here, so the Now strip is never stale (§6.1).
+    func schedulePersist() {
+        replan()
         persistTask?.cancel()
         persistTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(400))
@@ -511,7 +554,38 @@ final class CaptureStore {
         for record in existingItems where !liveItemIDs.contains(record.id) {
             context.delete(record)
         }
+
+        // Project-manager records — same reconcile for each.
+        reconcile(projects, in: context, make: ProjectRecord.init, update: { $0.update(from: $1) })
+        reconcile(targets, in: context, make: TargetRecord.init, update: { $0.update(from: $1) })
+        reconcile(decisions, in: context, make: DecisionRecord.init, update: { $0.update(from: $1) })
+        reconcile(ideas, in: context, make: IdeaRecord.init, update: { $0.update(from: $1) })
         try? context.save()
+    }
+
+    /// Upsert every live value into its record type and delete records that no
+    /// longer have a live value.
+    private func reconcile<V: Identifiable, R: PersistentModel>(
+        _ values: [V], in context: ModelContext,
+        make: (V) -> R, update: (R, V) -> Void) where V.ID == UUID {
+        let existing = (try? context.fetch(FetchDescriptor<R>())) ?? []
+        var byID: [UUID: R] = [:]
+        for record in existing { byID[recordID(record)] = record }
+        let liveIDs = Set(values.map(\.id))
+        for value in values {
+            if let record = byID[value.id] { update(record, value) } else { context.insert(make(value)) }
+        }
+        for record in existing where !liveIDs.contains(recordID(record)) { context.delete(record) }
+    }
+
+    private func recordID<R: PersistentModel>(_ record: R) -> UUID {
+        switch record {
+        case let r as ProjectRecord: r.id
+        case let r as TargetRecord: r.id
+        case let r as DecisionRecord: r.id
+        case let r as IdeaRecord: r.id
+        default: UUID()
+        }
     }
 
     // MARK: Receipt actions (refile = learning signal)
@@ -555,6 +629,14 @@ final class CaptureStore {
         guard let i = listItems.firstIndex(where: { $0.id == itemID }) else { return }
         listItems[i].done.toggle()
         listItems[i].doneAt = listItems[i].done ? .now : nil
+        listItems[i].state = listItems[i].done ? .done : .todo
+        // A target whose every step is done is done.
+        if let targetID = listItems[i].targetID,
+           let t = targets.firstIndex(where: { $0.id == targetID }) {
+            let open = listItems.filter { $0.targetID == targetID && !$0.done }
+            targets[t].done = open.isEmpty
+            targets[t].doneAt = open.isEmpty ? .now : nil
+        }
         Haptics.checkOff()
         schedulePersist()
     }

@@ -11,6 +11,7 @@
 		8AFA20042F11AB0000000013 /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = 8AFA20022F11AB0000000011 /* MLXLLM */; };
 		8AFA20052F11AB0000000014 /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = 8AFA20032F11AB0000000012 /* MLXLMCommon */; };
 		8AFA30022F11AB0000000021 /* GemmaModel in Resources */ = {isa = PBXBuildFile; fileRef = 8AFA30012F11AB0000000020 /* GemmaModel */; };
+		8AFA40032F11AB0000000033 /* PlanCore in Frameworks */ = {isa = PBXBuildFile; productRef = 8AFA40022F11AB0000000032 /* PlanCore */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -76,6 +77,7 @@
 				8AFA10032F11AB0000000003 /* FluidAudio in Frameworks */,
 				8AFA20042F11AB0000000013 /* MLXLLM in Frameworks */,
 				8AFA20052F11AB0000000014 /* MLXLMCommon in Frameworks */,
+				8AFA40032F11AB0000000033 /* PlanCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -140,6 +142,7 @@
 				8AFA10022F11AB0000000002 /* FluidAudio */,
 				8AFA20022F11AB0000000011 /* MLXLLM */,
 				8AFA20032F11AB0000000012 /* MLXLMCommon */,
+				8AFA40022F11AB0000000032 /* PlanCore */,
 			);
 			productName = FrictionlessNotes;
 			productReference = 8A27BC5D2F03673C00729E76 /* FrictionlessNotes.app */;
@@ -226,6 +229,7 @@
 			packageReferences = (
 				8AFA10012F11AB0000000001 /* XCRemoteSwiftPackageReference "FluidAudio" */,
 				8AFA20012F11AB0000000010 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */,
+				8AFA40012F11AB0000000031 /* XCLocalSwiftPackageReference "PlanCore" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 8A27BC5E2F03673C00729E76 /* Products */;
@@ -653,6 +657,13 @@
 		};
 /* End XCConfigurationList section */
 
+/* Begin XCLocalSwiftPackageReference section */
+		8AFA40012F11AB0000000031 /* XCLocalSwiftPackageReference "PlanCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = PlanCore;
+		};
+/* End XCLocalSwiftPackageReference section */
+
 /* Begin XCRemoteSwiftPackageReference section */
 		8AFA10012F11AB0000000001 /* XCRemoteSwiftPackageReference "FluidAudio" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -687,6 +698,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 8AFA20012F11AB0000000010 /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
 			productName = MLXLMCommon;
+		};
+		8AFA40022F11AB0000000032 /* PlanCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 8AFA40012F11AB0000000031 /* XCLocalSwiftPackageReference "PlanCore" */;
+			productName = PlanCore;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

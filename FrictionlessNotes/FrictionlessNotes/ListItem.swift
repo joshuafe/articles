@@ -2,43 +2,13 @@
 //  ListItem.swift
 //  FrictionlessNotes
 //
-//  A real, checkable list item — the actionable output of filing. When the brain
-//  files a todo/shopping capture, each FilingAction becomes one of these,
-//  carrying provenance back to the source capture. Same value-type + SwiftData
-//  boundary pattern as Capture/CaptureRecord; CloudKit-ready.
+//  SwiftData record for `ListItem` (the value type lives in PlanCore so the Mac
+//  app shares it). Same boundary pattern as Capture/CaptureRecord; CloudKit-ready:
+//  every v4 column optional or defaulted, so existing stores migrate lightly.
 //
 
 import Foundation
 import SwiftData
-
-struct ListItem: Identifiable, Equatable, Codable {
-    let id: UUID
-    var text: String
-    var category: NoteCategory          // .todo or .shopping
-    var group: String?                  // cluster label ("permit", "groceries")
-    var due: String?
-    var done: Bool
-    var doneAt: Date?
-    let createdAt: Date
-    let sourceCaptureID: UUID?           // provenance — tap back to the capture
-    let sourceActionID: UUID?            // links to the FilingAction (undo / move)
-
-    init(id: UUID = UUID(), text: String, category: NoteCategory,
-         group: String? = nil, due: String? = nil, done: Bool = false,
-         doneAt: Date? = nil, createdAt: Date = .now,
-         sourceCaptureID: UUID? = nil, sourceActionID: UUID? = nil) {
-        self.id = id
-        self.text = text
-        self.category = category
-        self.group = group
-        self.due = due
-        self.done = done
-        self.doneAt = doneAt
-        self.createdAt = createdAt
-        self.sourceCaptureID = sourceCaptureID
-        self.sourceActionID = sourceActionID
-    }
-}
 
 @Model
 final class ListItemRecord {
@@ -52,6 +22,20 @@ final class ListItemRecord {
     var createdAt: Date = Date.now
     var sourceCaptureID: UUID?
     var sourceActionID: UUID?
+    // v4
+    var projectID: UUID?
+    var targetID: UUID?
+    var pathOrder: Int = 0
+    var effortMinutes: Int?
+    var leadDays: Int = 0
+    var milestone: Bool = false
+    var needsYou: Bool = false
+    var waitingOn: String?
+    var dueDate: Date?
+    var dueKindRaw: String?
+    var stateRaw: String = TaskState.todo.rawValue
+    var plannedBy: String?
+    var actualMinutes: Int?
 
     init(id: UUID, text: String, categoryRaw: String, createdAt: Date) {
         self.id = id
@@ -76,6 +60,19 @@ extension ListItemRecord {
         doneAt = i.doneAt
         sourceCaptureID = i.sourceCaptureID
         sourceActionID = i.sourceActionID
+        projectID = i.projectID
+        targetID = i.targetID
+        pathOrder = i.pathOrder
+        effortMinutes = i.effortMinutes
+        leadDays = i.leadDays
+        milestone = i.milestone
+        needsYou = i.needsYou
+        waitingOn = i.waitingOn
+        dueDate = i.dueDate
+        dueKindRaw = i.dueKind?.rawValue
+        stateRaw = i.state.rawValue
+        plannedBy = i.plannedBy
+        actualMinutes = i.actualMinutes
     }
 }
 
@@ -85,6 +82,12 @@ extension ListItem {
                   category: NoteCategory(rawValue: r.categoryRaw) ?? .todo,
                   group: r.group, due: r.due, done: r.done, doneAt: r.doneAt,
                   createdAt: r.createdAt,
-                  sourceCaptureID: r.sourceCaptureID, sourceActionID: r.sourceActionID)
+                  sourceCaptureID: r.sourceCaptureID, sourceActionID: r.sourceActionID,
+                  projectID: r.projectID, targetID: r.targetID, pathOrder: r.pathOrder,
+                  effortMinutes: r.effortMinutes, leadDays: r.leadDays,
+                  milestone: r.milestone, needsYou: r.needsYou, waitingOn: r.waitingOn,
+                  dueDate: r.dueDate, dueKind: r.dueKindRaw.flatMap(DeadlineKind.init(rawValue:)),
+                  state: TaskState(rawValue: r.stateRaw) ?? .todo,
+                  plannedBy: r.plannedBy, actualMinutes: r.actualMinutes)
     }
 }

@@ -1,0 +1,449 @@
+{
+  "_about": "Seed ledger for the v4 scheduler experiment (DESIGN-PM.md). Dates are Joshua's; decompositions, effort and lead estimates are placeholder planner output to be corrected. Nothing here is PHI.",
+  "today": "2026-11-08",
+  "capacity": {
+    "_note": "Capacity varies widely by day (D4). Pattern below is an interim average until the clinical weekdays are named: set clinical days to 30 and research days to 180.",
+    "weekday_minutes": 150,
+    "weekend_minutes": 300,
+    "fixed": [
+      {
+        "date": "2026-11-09",
+        "minutes": 120,
+        "why": "HOSTing presentation itself"
+      },
+      {
+        "date": "2026-12-12",
+        "minutes": 300,
+        "why": "ASH, New Orleans (travel + session)"
+      },
+      {
+        "date": "2026-12-11",
+        "minutes": 150,
+        "why": "travel to ASH"
+      },
+      {
+        "date": "2026-12-13",
+        "minutes": 300,
+        "why": "ASH"
+      }
+    ],
+    "pattern": {
+      "mon": 120,
+      "tue": 120,
+      "wed": 120,
+      "thu": 120,
+      "fri": 120,
+      "sat": 300,
+      "sun": 300
+    }
+  },
+  "areas": [
+    {
+      "id": "A1",
+      "name": "Research",
+      "colour": "blue",
+      "share": 0.35
+    },
+    {
+      "id": "A2",
+      "name": "Clinical",
+      "colour": "pink",
+      "share": 0.15
+    },
+    {
+      "id": "A3",
+      "name": "Learning",
+      "colour": "purple",
+      "share": 0.15
+    },
+    {
+      "id": "A4",
+      "name": "Teaching & service",
+      "colour": "green",
+      "share": 0.1
+    },
+    {
+      "id": "A5",
+      "name": "Family",
+      "colour": "orange",
+      "share": 0.15
+    },
+    {
+      "id": "A6",
+      "name": "Health",
+      "colour": "teal",
+      "share": 0.1
+    }
+  ],
+  "projects": [
+    {
+      "id": "P1",
+      "name": "Modeling class",
+      "colour": "blue",
+      "area": "A3",
+      "horizon": "quarter",
+      "narrative": "Modeling course: midterm now, final mid-December.",
+      "people": [
+        "instructor"
+      ]
+    },
+    {
+      "id": "P2",
+      "name": "D&I course",
+      "colour": "teal",
+      "area": "A3",
+      "horizon": "quarter",
+      "narrative": "D&I course: assignment 4 then the final with a deck."
+    },
+    {
+      "id": "P3",
+      "name": "Review manuscript",
+      "colour": "purple",
+      "area": "A1",
+      "horizon": "quarter",
+      "narrative": "Review manuscript: full draft, readers by Dec 1, submit Dec 15.",
+      "people": [
+        "readers"
+      ]
+    },
+    {
+      "id": "P4",
+      "name": "ASH 2026",
+      "colour": "orange",
+      "area": "A1",
+      "horizon": "month",
+      "narrative": "ASH 2026 oral on T-Rux conditioning, Sat Dec 12 14:15."
+    },
+    {
+      "id": "P5",
+      "name": "HOSTing",
+      "colour": "green",
+      "area": "A4",
+      "horizon": "week",
+      "narrative": "HOSTing presentation on AI database construction, tomorrow."
+    }
+  ],
+  "targets": [
+    {
+      "id": "T1",
+      "project": "P5",
+      "title": "HOSTing presentation on AI database construction",
+      "due": "2026-11-09",
+      "kind": "hard",
+      "why": "You are presenting tomorrow.",
+      "steps": [
+        {
+          "id": "T1.1",
+          "text": "Finalize the slides",
+          "effort": 120,
+          "milestone": true
+        },
+        {
+          "id": "T1.2",
+          "text": "Rehearse once, out loud",
+          "effort": 45
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "project": "P1",
+      "title": "Modeling class midterm assignment",
+      "due": "2026-11-13",
+      "kind": "hard",
+      "steps": [
+        {
+          "id": "T2.1",
+          "text": "Read the prompt and plan the approach",
+          "effort": 30
+        },
+        {
+          "id": "T2.2",
+          "text": "Build and run the model",
+          "effort": 180
+        },
+        {
+          "id": "T2.3",
+          "text": "Write it up",
+          "effort": 120,
+          "milestone": true
+        },
+        {
+          "id": "T2.4",
+          "text": "Submit",
+          "effort": 15,
+          "needs_you": true
+        }
+      ]
+    },
+    {
+      "id": "T3",
+      "project": "P1",
+      "title": "Overdue back assignments (modeling class) — cutoff Fri Nov 13",
+      "due": "2026-11-13",
+      "kind": "hard",
+      "why": "The course stops accepting them this Friday, so this is a hard deadline, not a weekend goal. Three assignments assumed.",
+      "steps": [
+        {
+          "id": "T3.1",
+          "text": "Back assignment A",
+          "effort": 90
+        },
+        {
+          "id": "T3.2",
+          "text": "Back assignment B",
+          "effort": 90
+        },
+        {
+          "id": "T3.3",
+          "text": "Back assignment C",
+          "effort": 90,
+          "milestone": true
+        }
+      ]
+    },
+    {
+      "id": "T4",
+      "project": "P1",
+      "title": "Final exam prep (modeling class)",
+      "due": "2026-12-14",
+      "kind": "goal",
+      "why": "Exam is 'sometime mid-December'; the 14th is a placeholder until the date is known.",
+      "steps": [
+        {
+          "id": "T4.1",
+          "text": "Review notes and lectures",
+          "effort": 240
+        },
+        {
+          "id": "T4.2",
+          "text": "Work the practice problems",
+          "effort": 240,
+          "milestone": true
+        },
+        {
+          "id": "T4.3",
+          "text": "One-page formula sheet",
+          "effort": 60
+        }
+      ]
+    },
+    {
+      "id": "T5",
+      "project": "P2",
+      "title": "D&I course: assignment 4",
+      "due": "2026-11-25",
+      "kind": "hard",
+      "steps": [
+        {
+          "id": "T5.1",
+          "text": "Read the brief and gather sources",
+          "effort": 45
+        },
+        {
+          "id": "T5.2",
+          "text": "Draft assignment 4",
+          "effort": 180,
+          "milestone": true
+        },
+        {
+          "id": "T5.3",
+          "text": "Revise and submit",
+          "effort": 60,
+          "needs_you": true
+        }
+      ]
+    },
+    {
+      "id": "T6",
+      "project": "P2",
+      "title": "D&I course: final assignment and slide deck",
+      "due": "2026-12-05",
+      "kind": "hard",
+      "steps": [
+        {
+          "id": "T6.1",
+          "text": "Outline the final",
+          "effort": 60
+        },
+        {
+          "id": "T6.2",
+          "text": "Write the final assignment",
+          "effort": 240,
+          "milestone": true
+        },
+        {
+          "id": "T6.3",
+          "text": "Build the slide deck",
+          "effort": 180,
+          "milestone": true
+        },
+        {
+          "id": "T6.4",
+          "text": "Submit both",
+          "effort": 30,
+          "needs_you": true
+        }
+      ]
+    },
+    {
+      "id": "T7",
+      "project": "P3",
+      "title": "Submit the review manuscript",
+      "due": "2026-12-15",
+      "kind": "hard",
+      "why": "Readers need it by Dec 1 to turn comments around before submission.",
+      "steps": [
+        {
+          "id": "T7.1",
+          "text": "Complete the full draft",
+          "effort": 600,
+          "milestone": true
+        },
+        {
+          "id": "T7.2",
+          "text": "Send to readers",
+          "effort": 30,
+          "lead_days": 10,
+          "milestone": true,
+          "needs_you": true,
+          "due": "2026-12-01",
+          "due_kind": "hard"
+        },
+        {
+          "id": "T7.3",
+          "text": "Incorporate reader comments",
+          "effort": 240
+        },
+        {
+          "id": "T7.4",
+          "text": "Format and submit",
+          "effort": 60,
+          "needs_you": true
+        }
+      ]
+    },
+    {
+      "id": "T8",
+      "project": "P4",
+      "title": "ASH oral: T-Rux conditioning (Sat Dec 12, 14:15, MCCNO 388-390)",
+      "due": "2026-12-12",
+      "kind": "hard",
+      "why": "You said 'Dec 10 I think'; your ASH planner data has the talk on Dec 12 at 14:15. See decision D1.",
+      "steps": [
+        {
+          "id": "T8.1",
+          "text": "Build the talk slides",
+          "effort": 240,
+          "milestone": true,
+          "due": "2026-11-16",
+          "due_kind": "goal"
+        },
+        {
+          "id": "T8.2",
+          "text": "Practice talk (mid-November)",
+          "effort": 60,
+          "milestone": true,
+          "needs_you": true,
+          "due": "2026-11-18",
+          "due_kind": "goal"
+        },
+        {
+          "id": "T8.3",
+          "text": "Revise from practice-talk feedback",
+          "effort": 120
+        },
+        {
+          "id": "T8.4",
+          "text": "Final rehearsal",
+          "effort": 45
+        }
+      ]
+    }
+  ],
+  "decisions": [
+    {
+      "id": "D1",
+      "target": "T8",
+      "question": "Is the ASH talk on Dec 12 at 14:15, not Dec 10?",
+      "why_now": "Every ASH milestone is dated backwards from this.",
+      "background": "Your ASH 2026 planner lists your oral abstract (T-Rux conditioning + ruxolitinib) in the Oral Abstract Session on Saturday Dec 12, 14:15–14:30, MCCNO 388-390. ASH runs Dec 12–15.",
+      "touches": "The ASH target's deadline and the travel days reserved on Dec 11–13.",
+      "options": [
+        {
+          "label": "Yes, Dec 12",
+          "does": "Keeps the plan as scheduled."
+        },
+        {
+          "label": "No, Dec 10",
+          "does": "Moves the wall two days earlier; the talk milestones shift back."
+        }
+      ],
+      "if_unanswered": "The plan keeps Dec 12 from the program data.",
+      "answered": "2026-11-08",
+      "answer": "Yes, Dec 12"
+    },
+    {
+      "id": "D2",
+      "target": "T4",
+      "question": "When is the modeling final exam?",
+      "why_now": "Exam prep is dated from a placeholder (Dec 14); if the exam is earlier it collides with the D&I final and the manuscript.",
+      "background": "You said 'sometime mid-December'.",
+      "touches": "Only the exam-prep goal.",
+      "options": [
+        {
+          "label": "Enter the date",
+          "does": "Re-dates the prep steps."
+        },
+        {
+          "label": "Keep Dec 14 for now",
+          "does": "Nothing changes until the date is known."
+        }
+      ],
+      "if_unanswered": "Prep stays dated from Dec 14.",
+      "answered": "2026-11-08",
+      "answer": "Keep Dec 14 placeholder"
+    },
+    {
+      "id": "D3",
+      "target": "T3",
+      "question": "How many back assignments are overdue, and is there a hard cutoff?",
+      "why_now": "Seeded as three at 90 minutes each; if the course stops accepting them on a date, that date is a hard deadline, not a goal.",
+      "background": "You said 'several', hoped for this weekend.",
+      "touches": "The overdue goal and everything competing with it this week.",
+      "options": [
+        {
+          "label": "Set count and cutoff",
+          "does": "Re-sizes the work and may turn the goal into a hard deadline."
+        },
+        {
+          "label": "Three, no cutoff",
+          "does": "Keeps the seed."
+        }
+      ],
+      "if_unanswered": "Three assignments, goal only.",
+      "answered": "2026-11-08",
+      "answer": "Cutoff this Friday, Nov 13; three assignments"
+    },
+    {
+      "id": "D4",
+      "question": "Which weekdays are clinical? (capacity: clinical 30 min, research 180 min, weekends 300 min)",
+      "why_now": "Every target date depends on it; an interim flat 120 min/weekday is in use.",
+      "background": "Placeholder. Clinic/lab-day patterns would make it per-weekday.",
+      "touches": "All planned and target dates.",
+      "options": [
+        {
+          "label": "Name the clinical days",
+          "does": "Sets the per-weekday pattern; the plan re-runs."
+        },
+        {
+          "label": "Keep the interim average",
+          "does": "Dates stay as computed from 120 min/weekday."
+        }
+      ],
+      "if_unanswered": "The interim average stays.",
+      "answered": "2026-11-08",
+      "answer": "Keep the interim average (120 min weekdays, 300 weekends) until clinical days are named"
+    }
+  ]
+}

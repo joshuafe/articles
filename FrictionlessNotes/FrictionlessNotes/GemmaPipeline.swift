@@ -34,8 +34,13 @@ private struct GemmaItem: Codable {
     var text: String
     var due: String?
     var group: String?
+    // v4 (DESIGN-PM.md §6.2): the typed deadline and the planner's first guesses.
+    var deadline: String?        // "2026-11-21" or null
+    var deadlineKind: String?    // "hard" | "goal" | null
+    var effortMinutes: Int?
+    var waitingOn: String?
 
-    private enum CodingKeys: String, CodingKey { case text, due, group }
+    private enum CodingKeys: String, CodingKey { case text, due, group, deadline, deadlineKind, effortMinutes, waitingOn }
 
     init(from decoder: Decoder) throws {
         if let bare = try? decoder.singleValueContainer().decode(String.self) {
@@ -45,7 +50,26 @@ private struct GemmaItem: Codable {
         text = (try? c.decode(String.self, forKey: .text)) ?? ""
         due = try? c.decodeIfPresent(String.self, forKey: .due) ?? nil
         group = try? c.decodeIfPresent(String.self, forKey: .group) ?? nil
+        deadline = try? c.decodeIfPresent(String.self, forKey: .deadline) ?? nil
+        deadlineKind = try? c.decodeIfPresent(String.self, forKey: .deadlineKind) ?? nil
+        effortMinutes = try? c.decodeIfPresent(Int.self, forKey: .effortMinutes) ?? nil
+        waitingOn = try? c.decodeIfPresent(String.self, forKey: .waitingOn) ?? nil
     }
+}
+
+/// "2026-11-21" → start of that day in the current calendar; anything else → nil.
+private func gemmaDate(_ s: String?) -> Date? {
+    guard let s, s.count >= 10 else { return nil }
+    let f = DateFormatter()
+    f.calendar = Calendar(identifier: .gregorian)
+    f.timeZone = .current
+    f.dateFormat = "yyyy-MM-dd"
+    return f.date(from: String(s.prefix(10))).map { Calendar.current.startOfDay(for: $0) }
+}
+
+private func gemmaKind(_ s: String?) -> DeadlineKind? {
+    guard let s = s?.lowercased().trimmingCharacters(in: .whitespaces), !s.isEmpty, s != "null" else { return nil }
+    return DeadlineKind(rawValue: s)
 }
 
 /// Codable mirror of FilingDecision — Gemma emits this as JSON (no @Generable,
@@ -67,9 +91,17 @@ private struct GemmaFilingDecision: Codable {
     /// "question" when the speaker is asking something to be answered from their
     /// own notes; otherwise "capture" (default). Drives the Ask routing.
     var intent: String?
+    // v4 (DESIGN-PM.md §6.2) — the whole-thought deadline, its kind, a project label,
+    // an effort guess and who it waits on. Every one optional.
+    var deadline: String?
+    var deadlineKind: String?
+    var project: String?
+    var effortMinutes: Int?
+    var waitingOn: String?
 
     private enum CodingKeys: String, CodingKey {
         case polishedTranscript, summary, category, items, due, confident, distinctThoughts, intent
+        case deadline, deadlineKind, project, effortMinutes, waitingOn
     }
 
     init(from decoder: Decoder) throws {
@@ -82,6 +114,11 @@ private struct GemmaFilingDecision: Codable {
         confident = (try? c.decode(Bool.self, forKey: .confident)) ?? false
         distinctThoughts = (try? c.decodeIfPresent([String].self, forKey: .distinctThoughts)) ?? nil
         intent = (try? c.decodeIfPresent(String.self, forKey: .intent)) ?? nil
+        deadline = (try? c.decodeIfPresent(String.self, forKey: .deadline)) ?? nil
+        deadlineKind = (try? c.decodeIfPresent(String.self, forKey: .deadlineKind)) ?? nil
+        project = (try? c.decodeIfPresent(String.self, forKey: .project)) ?? nil
+        effortMinutes = (try? c.decodeIfPresent(Int.self, forKey: .effortMinutes)) ?? nil
+        waitingOn = (try? c.decodeIfPresent(String.self, forKey: .waitingOn)) ?? nil
     }
 }
 
@@ -166,6 +203,21 @@ final class GemmaPipeline: PipelineClient {
             one-per-item and not everything-in-one.
         A single, non-list thought leaves "items" empty.
 
+        DEADLINES: dates are typed. Whenever the speaker gives a date for a task \
+        (overall, or per item), also fill:
+          • "deadline": the resolved calendar date as "YYYY-MM-DD" (resolve "friday", \
+            "the 20th", "tomorrow" against today's date below). Null when no date.
+          • "deadlineKind": "hard" when the date is fixed and missing it costs \
+            something ("must", "due", "deadline", "submit by", "the exam is", \
+            "flight"); "goal" when it is an aim ("I'd like to", "ideally", "try to", \
+            "hope to", "aim for"). Null when there is no date. Never invent a date.
+          • "project": a short lowercase label for the larger thing this belongs to \
+            ("modeling class", "review manuscript", "ash talk"), or null.
+          • "effortMinutes": a reasonable whole-number guess of the speaker's own \
+            working time (30 for a quick task, 120 for an afternoon, 600 for a full \
+            draft), or null.
+          • "waitingOn": a person or event the task waits on, or null.
+
         distinctThoughts: leave empty UNLESS the recording holds two or more \
         entirely UNRELATED subjects (e.g. a work task AND a grocery run) — then put \
         each subject's full text as a separate string and leave everything else \
@@ -182,29 +234,46 @@ final class GemmaPipeline: PipelineClient {
           "polishedTranscript": "string",
           "summary": "string (<=8 words, lowercase, no period)",
           "category": "todo|shopping|idea|note|journal|reference",
-          "items": [ { "text": "string", "due": "fri or null", "group": "label" } ],
+          "items": [ { "text": "string", "due": "fri or null", "group": "label", "deadline": "YYYY-MM-DD or null", "deadlineKind": "hard|goal|null", "effortMinutes": 60, "waitingOn": null } ],
           "due": "overall due hint or null",
+          "deadline": "YYYY-MM-DD or null",
+          "deadlineKind": "hard|goal|null",
+          "project": "label or null",
+          "effortMinutes": 60,
+          "waitingOn": null,
           "confident": true,
           "distinctThoughts": [],
           "intent": "capture"
         }
 
         Example — input "I need to call dana about the permit before friday, then \
-        email the inspector the photos, oh and grab milk and coffee on the way home":
+        email the inspector the photos, oh and grab milk and coffee on the way home" \
+        (today being Monday, November 9, 2026):
         {
           "polishedTranscript": "Call Dana about the permit before Friday, then email the inspector the photos. Also grab milk and coffee on the way home.",
           "summary": "permit calls and a grocery stop",
           "category": "todo",
           "items": [
-            { "text": "Call Dana about the permit", "due": "fri", "group": "permit" },
-            { "text": "Email the inspector the photos", "due": null, "group": "permit" },
-            { "text": "Buy milk", "due": null, "group": "groceries" },
-            { "text": "Buy coffee", "due": null, "group": "groceries" }
+            { "text": "Call Dana about the permit", "due": "fri", "group": "permit", "deadline": "2026-11-13", "deadlineKind": "hard", "effortMinutes": 15, "waitingOn": "Dana" },
+            { "text": "Email the inspector the photos", "due": null, "group": "permit", "deadline": null, "deadlineKind": null, "effortMinutes": 15, "waitingOn": null },
+            { "text": "Buy milk", "due": null, "group": "groceries", "deadline": null, "deadlineKind": null, "effortMinutes": null, "waitingOn": null },
+            { "text": "Buy coffee", "due": null, "group": "groceries", "deadline": null, "deadlineKind": null, "effortMinutes": null, "waitingOn": null }
           ],
           "due": "fri",
+          "deadline": "2026-11-13",
+          "deadlineKind": "hard",
+          "project": "permit",
+          "effortMinutes": 30,
+          "waitingOn": null,
           "confident": true,
           "distinctThoughts": []
         }
+
+        Example — input "I'd like to have the figures done by the twentieth, the \
+        submission itself is due December first" (today being November 9, 2026): \
+        two items; the figures get "deadline": "2026-11-20", "deadlineKind": "goal"; \
+        the submission gets "deadline": "2026-12-01", "deadlineKind": "hard"; the \
+        overall "deadline" is "2026-12-01" with "deadlineKind": "hard".
 
         Be decisive; set "confident" false only when genuinely ambiguous.
         """
@@ -475,19 +544,33 @@ final class GemmaPipeline: PipelineClient {
             // related items read together, each carrying its own due hint.
             let tool: FilingAction.Tool = category == .shopping ? .addListItem : .createTodo
             for item in Self.orderByGroup(items).prefix(20) {
+                // An item's own date wins; otherwise the whole thought's date applies
+                // to every item that has a due hint, so nothing dated is left untyped.
+                let itemDate = gemmaDate(item.deadline) ?? (item.due != nil ? gemmaDate(decision.deadline) : nil)
+                let itemKind = gemmaKind(item.deadlineKind) ?? (itemDate != nil ? gemmaKind(decision.deadlineKind) : nil)
                 actions.append(FilingAction(
                     tool: tool,
                     text: item.text.trimmingCharacters(in: .whitespacesAndNewlines),
                     listName: item.group ?? category.rawValue,
                     due: item.due,
-                    category: category))
+                    category: category,
+                    dueDate: itemDate,
+                    dueKind: itemKind,
+                    project: decision.project,
+                    effortMinutes: item.effortMinutes,
+                    waitingOn: item.waitingOn))
             }
         } else {
             switch category {
             case .todo:
                 actions.append(FilingAction(tool: .createTodo,
                     text: decision.summary, listName: "todo",
-                    due: decision.due, category: .todo))
+                    due: decision.due, category: .todo,
+                    dueDate: gemmaDate(decision.deadline),
+                    dueKind: gemmaKind(decision.deadlineKind),
+                    project: decision.project,
+                    effortMinutes: decision.effortMinutes,
+                    waitingOn: decision.waitingOn))
             default:
                 actions.append(FilingAction(tool: .fileCapture, text: "filed",
                     listName: category.rawValue, category: category))

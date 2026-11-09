@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+@_exported import PlanCore   // NoteCategory, ListItem, Target, Decision … shared with the Mac app
 
 enum CaptureKind: String, Codable {
     case audio, text, photo
@@ -43,9 +44,7 @@ enum CaptureStatus: String, Codable {
     }
 }
 
-enum NoteCategory: String, Codable, CaseIterable {
-    case todo, shopping, idea, note, journal, reference
-
+extension NoteCategory {
     var tint: Color {
         switch self {
         case .todo: Color(hex: 0x5BA8FF)
@@ -74,15 +73,36 @@ struct FilingAction: Identifiable, Equatable, Codable {
     var due: String?            // always surfaced, never silent
     var category: NoteCategory?
     var undone: Bool = false
+    // v4 (DESIGN-PM.md §6.2): what the brain read about the deadline. All optional
+    // so receipts persisted before v4 still decode.
+    var dueDate: Date?          // resolved calendar date (start of day)
+    var dueKind: DeadlineKind?  // hard | goal
+    var project: String?        // short project label
+    var effortMinutes: Int?
+    var waitingOn: String?
 
     init(id: UUID = UUID(), tool: Tool, text: String, listName: String? = nil,
-         due: String? = nil, category: NoteCategory? = nil) {
+         due: String? = nil, category: NoteCategory? = nil,
+         dueDate: Date? = nil, dueKind: DeadlineKind? = nil, project: String? = nil,
+         effortMinutes: Int? = nil, waitingOn: String? = nil) {
         self.id = id
         self.tool = tool
         self.text = text
         self.listName = listName
         self.due = due
         self.category = category
+        self.dueDate = dueDate
+        self.dueKind = dueKind
+        self.project = project
+        self.effortMinutes = effortMinutes
+        self.waitingOn = waitingOn
+    }
+
+    /// Receipt line for the date: "due Fri · hard" — the kind is always printed.
+    var dueLine: String? {
+        guard let due else { return nil }
+        if let kind = dueKind, kind != .none { return "due \(due) · \(kind.rawValue)" }
+        return "due \(due)"
     }
 }
 

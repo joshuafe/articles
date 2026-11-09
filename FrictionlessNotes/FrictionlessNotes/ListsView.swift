@@ -9,7 +9,10 @@
 import SwiftUI
 
 /// Navigation route for the lists surface (distinct from the capture-id route).
-enum LedgerRoute: Hashable { case lists }
+enum LedgerRoute: Hashable { case lists, program }
+
+/// Navigation route to one target's detail (DESIGN-PM.md §8.3).
+struct TargetRoute: Hashable { let id: UUID }
 
 struct ListsView: View {
     @Environment(CaptureStore.self) private var store

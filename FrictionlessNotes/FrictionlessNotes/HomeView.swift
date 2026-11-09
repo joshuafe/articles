@@ -26,8 +26,8 @@ struct HomeView: View {
                     .padding(.top, Theme.s2)
                     .padding(.bottom, Theme.s4)
 
-                if store.hasListItems && !isLive {
-                    listsAffordance
+                if (store.hasListItems || !store.openTargets.isEmpty) && !isLive {
+                    nowAffordance
                         .padding(.bottom, Theme.s4)
                 }
 
@@ -82,8 +82,14 @@ struct HomeView: View {
         .navigationDestination(for: UUID.self) { id in
             CaptureDetailView(captureID: id)
         }
-        .navigationDestination(for: LedgerRoute.self) { _ in
-            ListsView()
+        .navigationDestination(for: LedgerRoute.self) { route in
+            switch route {
+            case .lists: ListsView()
+            case .program: ProgramView()
+            }
+        }
+        .navigationDestination(for: TargetRoute.self) { route in
+            TargetDetailView(targetID: route.id)
         }
         .task { await store.startEars() }
         .onChange(of: scenePhase) { _, phase in
@@ -127,12 +133,17 @@ struct HomeView: View {
         .contentShape(Rectangle())
     }
 
-    /// Quiet tappable summary of open list items → pushes the Lists surface.
-    private var listsAffordance: some View {
-        NavigationLink(value: LedgerRoute.lists) {
+    /// The Now whisper (DESIGN-PM.md §8.1): one quiet line → the Program surface
+    /// when there are targets, the Lists surface when there are only lists.
+    /// Red only when a hard deadline will be missed.
+    private var nowAffordance: some View {
+        let hasProgram = !store.openTargets.isEmpty
+        let line = hasProgram ? (store.nowWhisper ?? "program") : listsSummary
+        let tint = store.hasWillMiss ? Theme.statusError : Theme.lamplight.opacity(0.8)
+        return NavigationLink(value: hasProgram ? LedgerRoute.program : LedgerRoute.lists) {
             HStack(spacing: Theme.s2) {
                 Text("\u{25B8}").micro(Theme.inkFaint)
-                Text(listsSummary).micro(Theme.lamplight.opacity(0.8))
+                Text(line).micro(tint)
             }
             .frame(maxWidth: .infinity)
             .contentShape(Rectangle())
@@ -304,6 +315,7 @@ struct DebugBar: View {
                 debugButton("disposal") { store.sendEndpoint(.disposalDetected) }
                 debugButton("pocket") { store.sendEndpoint(.pocketed) }
                 debugButton(store.macOffline ? "mac: off" : "mac: on") { store.toggleOffline() }
+                debugButton(store.demoSeedLoaded ? "seeded" : "seed plan") { store.importDemoSeed() }
             }
             .padding(.horizontal, Theme.s4)
         }

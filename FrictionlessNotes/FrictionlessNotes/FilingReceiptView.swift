@@ -42,7 +42,7 @@ struct FilingReceiptView: View {
                 Text("\u{2192} ").foregroundStyle(Theme.inkFaint)
                 + Text(action.listName ?? action.tool.rawValue).foregroundStyle(Theme.lamplight)
                 + Text(action.tool == .learned ? "" : " · \(action.text)").foregroundStyle(Theme.inkDim)
-                + Text(action.due != nil ? "  due \(action.due!)" : "").foregroundStyle(Theme.lamplight)
+                + Text(action.dueLine.map { "  \($0)" } ?? "").foregroundStyle(Theme.lamplight)
             }
             .font(Typography.caption)
             .lineLimit(1)
@@ -79,8 +79,8 @@ struct FilingReceiptView: View {
                 .frame(width: 4, height: 4)
             Text(action.listName ?? action.tool.rawValue)
                 .micro(Theme.inkFaint)
-            if let due = action.due {
-                Text("due \(due)").micro(Theme.lamplight.opacity(0.7))
+            if let line = action.dueLine {
+                Text(line).micro(Theme.lamplight.opacity(0.7))
             }
         }
         .transition(.opacity)
